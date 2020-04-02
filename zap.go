@@ -13,11 +13,14 @@ type LoggerAdapter struct {
 	logger  *zap.Logger
 	level   log.LogLevel
 	showSQL bool
+	opt     *options
 }
 
-func Logger(logger *zap.Logger) log.ContextLogger {
+func Logger(logger *zap.Logger, opts ...Option) log.ContextLogger {
+	o := evaluateOpt(opts)
 	return &LoggerAdapter{
 		logger: logger,
+		opt:    o,
 	}
 }
 
@@ -26,6 +29,10 @@ func (l *LoggerAdapter) BeforeSQL(_ log.LogContext) {}
 func (l *LoggerAdapter) AfterSQL(lc log.LogContext) {
 	if !l.showSQL {
 		return
+	}
+	lg := l.logger
+	if l.opt.contextFunc != nil {
+		lg = lg.With(l.opt.contextFunc(lc.Ctx)...)
 	}
 	sql := fmt.Sprintf("%v %v", lc.SQL, lc.Args)
 
@@ -36,7 +43,7 @@ func (l *LoggerAdapter) AfterSQL(lc log.LogContext) {
 		level = zapcore.InfoLevel
 	}
 
-	l.logger.Check(level, "finished sql").Write(zap.String("sql", sql), zap.Duration("execute_time", lc.ExecuteTime), zap.Error(lc.Err))
+	lg.Check(level, "finished sql").Write(zap.String("sql", sql), zap.Duration("execute_time", lc.ExecuteTime), zap.Error(lc.Err))
 }
 
 func (l *LoggerAdapter) Debugf(format string, v ...interface{}) {
